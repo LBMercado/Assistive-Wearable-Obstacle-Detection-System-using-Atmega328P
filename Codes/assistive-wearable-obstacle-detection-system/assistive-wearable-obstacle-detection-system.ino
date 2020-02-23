@@ -4,12 +4,16 @@
 #include <pcmRF.h>
 #include "DebugUtils.h"
 /* --------------------------------------------------------------- */
-// #define DEBUG
+//#define DEBUG
 /* --------------------------------------------------------------- */
 /* Device Operating Configurations */
-#define MAX_DISTANCE 50 //in centimeters
-#define STAIR_ELEV_DISTANCE 20 //in centimeters
-#define VIBRATION_DURATION 500 //in milliseconds
+#define SENSOR_INTERVAL               500     //in milliseconds, amount of time to wait before next measurement
+#define MAX_DISTANCE                  50      //in centimeters
+#define STAIR_ELEV_DISTANCE           20      //in centimeters
+#define VIBRATION_DURATION            500     //in milliseconds
+#define SPEAKER_VOLUME                6       //set volume to 6 (loudest 7, no sound 0) might be distorted if too loud
+#define SPEAKER_SUPERSAMPLING_ENABLED 0       //enable 2x supersampling
+#define SPEAKER_AUDIO_LOOP_ENABLED    0       //prevent repeated playing of same file
 /* --------------------------------------------------------------- */
 #define OBSTACLE_LVL1_DISTANCE MAX_DISTANCE / 4
 #define OBSTACLE_LVL2_DISTANCE MAX_DISTANCE / 2
@@ -20,6 +24,11 @@
 #define PWM_LVL3_VALUE 255 / 2
 #define PWM_LVL4_VALUE 255 / 4
 #define PWM_LVL5_VALUE 0
+/* --------------------------------------------------------------- */
+#if SPEAKER_VOLUME > 7 || SPEAKER_VOLUME < 0
+#undef SPEAKER_VOLUME
+#define SPEAKER_VOLUME 6
+#endif
 /* --------------------------------------------------------------- */
 /* PIN Configuration */
 //    ultrasonic sensor pins
@@ -35,8 +44,9 @@ const unsigned short PIR_RX_RIGHT_PIN = 8;
 const unsigned short PWM_PIN_RIGHT = 3;
 const unsigned short PWM_PIN_FRONT = 6;
 const unsigned short PWM_PIN_LEFT = 10;
-//    selector pin for choosing between us sensors for general obstacles
-//    or us sensor for stairs, pir sensors, and microsd card reader
+//    selector pin for choosing between:
+//      0 : ultrasonic sensors for general obstacles
+//      1 : ultrasonic sensor for stair detection, PIR sensors, and microsd card reader
 const unsigned short SELECTOR_PIN = 2;
 //    microsd card reader and speaker pins for audio playback
 const unsigned short SD_MISO_PIN = 12;
@@ -52,6 +62,10 @@ const unsigned short SPEAKER_PIN = 9;
 //    D8 - INPUT PIN
 /* --------------------------------------------------------------- */
 unsigned short stairDetectState;
+bool sdCardFailed;
+#ifdef DEBUG
+unsigned long seqNo;
+#endif
 /* --------------------------------------------------------------- */
 //output variable for stair detection algorithm
 long prevStairDistance;
@@ -74,19 +88,27 @@ void setup() {
   pinMode(SELECTOR_PIN, OUTPUT);
   stairDetectState = 0;
   selectDeviceLine(1);
+  #ifdef DEBUG
+  Serial.begin(9600);
+  seqNo = 0;
+  #endif
   if (initializeSDCardReader())
   {
-    // successfully initialized connection, sd card communication is functional
-    // end the connection
+    // sd card communication is functional
+    DEBUG_PRINTLN("SD Card Reader initialized successfully.");
+    sdAudioPlayer.speakerPin = SPEAKER_PIN;
+    sdAudioPlayer.setVolume(SPEAKER_VOLUME);
+    sdAudioPlayer.quality(SPEAKER_SUPERSAMPLING_ENABLED);
+    sdAudioPlayer.loop(SPEAKER_AUDIO_LOOP_ENABLED);
+    DEBUG_PRINTLN("Audio Playback Settings initialized.");
     endSDCardReader();
+    sdCardFailed = false;
+  } else 
+  {
+    DEBUG_PRINTLN("ERROR: SD Card Reader failed to initialize.");
+    sdCardFailed = true;
   }
 
-  sdAudioPlayer.speakerPin = SPEAKER_PIN;
-  sdAudioPlayer.setVolume(6); // set volume to 6 (loudest 7, no sound 0) might be distorted if too loud
-  sdAudioPlayer.quality(1); //enable 2x supersampling
-  sdAudioPlayer.loop(0); //prevent repeated playing of same file
-
-  //  put a led through pin 13 to see that program is working
   beginVibrationMotors();
   startTone();
 }
@@ -94,106 +116,150 @@ void setup() {
 void loop() {
   long durationMeasured, distanceMeasuredInCm;
   bool leftActive, rightActive;
-  selectDeviceLine(1);
 
-  // conside moving obstacles first
-  leftActive = digitalRead(PIR_RX_LEFT_PIN) == HIGH;
-  rightActive = digitalRead(PIR_RX_RIGHT_PIN) == HIGH;
-
-  if (leftActive && rightActive)
+  #ifdef DEBUG
+  seqNo++;
+  DEBUG_PRINT("Sequence #");
+  DEBUG_PRINT(seqNo);
+  DEBUG_PRINTLN();
+  #endif
+  
+  // motion detection and stair detection
+  // will refuse to work if audio is not initialized properly
+  if (!sdCardFailed)
   {
-    //enter only when sd card reader connection is successful
-    if (initializeSDCardReader())
+    selectDeviceLine(1);
+
+    // conside moving obstacles first
+    leftActive = digitalRead(PIR_RX_LEFT_PIN) == HIGH;
+    rightActive = digitalRead(PIR_RX_RIGHT_PIN) == HIGH;
+
+    if (leftActive && rightActive)
     {
-      //  select and play obstacle_front.wav from sd card
-      playFile("ofron.wav");
-      while (sdAudioPlayer.isPlaying()); //wait for audio playback to finish
-      endSDCardReader();
-    }
-  }
-  else if (leftActive)
-  {
-    //enter only when sd card reader connection is successful
-    if (initializeSDCardReader())
-    {
-      //  select and play obstacle_left.wav from sd card
-      playFile("oleft.wav");
-      while (sdAudioPlayer.isPlaying()); //wait for audio playback to finish
-      endSDCardReader();
-    }
-  }
-  else if (rightActive)
-  {
-    //enter only when sd card reader connection is successful
-    if (initializeSDCardReader())
-    {
-      //  select and play obstacle_right.wav from sd card
-      playFile("orght.wav");
-      while (sdAudioPlayer.isPlaying()); //wait for audio playback to finish
-      endSDCardReader();
-    }
-  }
-
-  //  consider stair detection case
-  switch (stairDetectState)
-  {
-    //starting point, ignore for first run
-    case 0:
-      stairDetectState++;
-      break;
-    //record initial distance
-    case 1:
-      //  select line 0 to choose the US sensor devices and common trigger
-      selectDeviceLine(0);
-      triggerUltrasonicSensor(US_TRIG_PIN);
-      //  select line 1 to choose the microsd card reader, PIR sensors, and US sensor for stair detection
-      selectDeviceLine(1);
-
-      durationMeasured = pulseIn(US_ECHO_STAIRS_PIN, HIGH);
-      prevStairDistance = microsecondsToCentimeters(durationMeasured);
-      stairDetectState++;
-      break;
-    //record final distance and compare, then clear
-    case 2:
-      long finalDistanceMeasured;
-      //  select line 0 to choose the US sensor devices and common trigger
-      selectDeviceLine(0);
-      triggerUltrasonicSensor(US_TRIG_PIN);
-
-      //  select line 1 to choose the microsd card reader, PIR sensors, and US sensor for stair detection
-      selectDeviceLine(1);
-
-      durationMeasured = pulseIn(US_ECHO_STAIRS_PIN, HIGH);
-      finalDistanceMeasured = microsecondsToCentimeters(durationMeasured);
-
-      //compare if there is a significant change in elevation
-      //Republic Act No. 6541 - SECTION 3.01.08 - (h)
-      //low elevation - downward stairs
-      if (finalDistanceMeasured - prevStairDistance >= STAIR_ELEV_DISTANCE)
+      //enter only when sd card reader connection is successful
+      if (initializeSDCardReader())
       {
-        //enter only when sd card reader connection is successful
-        if (initializeSDCardReader())
-        {
-          //  select and play obstacle_lowElevation.wav from sd card
-          playFile("olwlv.wav");
-          while (sdAudioPlayer.isPlaying()); //wait for audio playback to finish
-          endSDCardReader();
-        }
-      }
-      //high elevation - upward stairs
-      else if (finalDistanceMeasured - prevStairDistance <= -STAIR_ELEV_DISTANCE)
+        //  select and play obstacle_front.wav from sd card
+        playFile("ofron.wav");
+        while (sdAudioPlayer.isPlaying()); //wait for audio playback to finish
+        endSDCardReader();
+      } else
       {
-        //enter only when sd card reader connection is successful
-        if (initializeSDCardReader())
-        {
-          //  select and play obstacle_elevated.wav from sd card
-          playFile("oelev.wav");
-          while (sdAudioPlayer.isPlaying()); //wait for audio playback to finish
-          endSDCardReader();
-        }
+        DEBUG_PRINTLN("ERROR: Failed to play audio playback for front obstacle detection.");
       }
-      stairDetectState--;
-      break;
+    }
+    else if (leftActive)
+    {
+      //enter only when sd card reader connection is successful
+      if (initializeSDCardReader())
+      {
+        //  select and play obstacle_left.wav from sd card
+        playFile("oleft.wav");
+        while (sdAudioPlayer.isPlaying()); //wait for audio playback to finish
+        endSDCardReader();
+      } else
+      {
+        DEBUG_PRINTLN("ERROR: Failed to play audio playback for left obstacle detection.");
+      }
+    }
+    else if (rightActive)
+    {
+      //enter only when sd card reader connection is successful
+      if (initializeSDCardReader())
+      {
+        //  select and play obstacle_right.wav from sd card
+        playFile("orght.wav");
+        while (sdAudioPlayer.isPlaying()); //wait for audio playback to finish
+        endSDCardReader();
+      } else
+      {
+        DEBUG_PRINTLN("ERROR: Failed to play audio playback for right obstacle detection.");
+      }
+    }
+
+    //  consider stair detection case
+    switch (stairDetectState)
+    {
+      //starting point, ignore for first run
+      case 0:
+        stairDetectState++;
+        DEBUG_PRINT("Stair State = ");
+        DEBUG_PRINT(stairDetectState);
+        DEBUG_PRINTLN();
+        break;
+      //record initial distance
+      case 1:
+        //  select line 0 to choose the US sensor devices and common trigger
+        selectDeviceLine(0);
+        triggerUltrasonicSensor(US_TRIG_PIN);
+        //  select line 1 to choose the microsd card reader, PIR sensors, and US sensor for stair detection
+        selectDeviceLine(1);
+
+        durationMeasured = pulseIn(US_ECHO_STAIRS_PIN, HIGH);
+        prevStairDistance = microsecondsToCentimeters(durationMeasured);
+        DEBUG_PRINT("Initial Stair Distance = ");
+        DEBUG_PRINT(prevStairDistance);
+        DEBUG_PRINT(" cm\n");
+        stairDetectState++;
+        DEBUG_PRINT("Stair State = ");
+        DEBUG_PRINT(stairDetectState);
+        DEBUG_PRINTLN();
+        break;
+      //record final distance and compare, then clear
+      case 2:
+        long finalDistanceMeasured;
+        //  select line 0 to choose the US sensor devices and common trigger
+        selectDeviceLine(0);
+        triggerUltrasonicSensor(US_TRIG_PIN);
+
+        //  select line 1 to choose the microsd card reader, PIR sensors, and US sensor for stair detection
+        selectDeviceLine(1);
+
+        durationMeasured = pulseIn(US_ECHO_STAIRS_PIN, HIGH);
+        finalDistanceMeasured = microsecondsToCentimeters(durationMeasured);
+        DEBUG_PRINT("Final Stair Distance = ");
+        DEBUG_PRINT(finalDistanceMeasured);
+        DEBUG_PRINT(" cm\n");
+        //compare if there is a significant change in elevation
+        //Republic Act No. 6541 - SECTION 3.01.08 - (h)
+        //low elevation - downward stairs
+        if (finalDistanceMeasured - prevStairDistance >= STAIR_ELEV_DISTANCE)
+        {
+          DEBUG_PRINTLN("Low Elevation Stairs detected.");
+          //enter only when sd card reader connection is successful
+          if (initializeSDCardReader())
+          {
+            //  select and play obstacle_lowElevation.wav from sd card
+            playFile("olwlv.wav");
+            while (sdAudioPlayer.isPlaying()); //wait for audio playback to finish
+            endSDCardReader();
+          } else
+          {
+            DEBUG_PRINTLN("ERROR: Failed to play audio playback for low elevation obstacle.");
+          }
+        }
+        //high elevation - upward stairs
+        else if (finalDistanceMeasured - prevStairDistance <= -STAIR_ELEV_DISTANCE)
+        {
+          DEBUG_PRINTLN("High Elevation Stairs detected.");
+          //enter only when sd card reader connection is successful
+          if (initializeSDCardReader())
+          {
+            //  select and play obstacle_elevated.wav from sd card
+            playFile("oelev.wav");
+            while (sdAudioPlayer.isPlaying()); //wait for audio playback to finish
+            endSDCardReader();
+          } else
+          {
+            DEBUG_PRINTLN("ERROR: Failed to play audio playback for high elevation obstacle.");
+          }
+        }
+        stairDetectState--;
+        break;
+    }
+  } else
+  {
+    DEBUG_PRINTLN("ERROR: Unable to proceed with motion/stair detection, SD Card has failed at setup.");
   }
 
   //  select line 0 to choose the US sensor devices and common trigger
@@ -205,16 +271,19 @@ void loop() {
   // whose duration is the time (in microseconds) from the sending of the ping
   // to the reception of its echo off of an object.
   triggerUltrasonicSensor(US_TRIG_PIN);
+  DEBUG_PRINTLN("Front Ultrasonic triggered.");
   durationMeasured = pulseIn(US_ECHO_FRONT_PIN, HIGH);
   distanceMeasuredInCm = microsecondsToCentimeters(durationMeasured);
   driveMotor(distanceMeasuredInCm, true, true, VIBRATION_DURATION);
 
   triggerUltrasonicSensor(US_TRIG_PIN);
+  DEBUG_PRINTLN("Left Ultrasonic triggered.");
   durationMeasured = pulseIn(US_ECHO_LEFT_PIN, HIGH);
   distanceMeasuredInCm = microsecondsToCentimeters(durationMeasured);
   driveMotor(distanceMeasuredInCm, true, false, VIBRATION_DURATION);
 
   triggerUltrasonicSensor(US_TRIG_PIN);
+  DEBUG_PRINTLN("Right Ultrasonic triggered.");
   durationMeasured = pulseIn(US_ECHO_RIGHT_PIN, HIGH);
   distanceMeasuredInCm = microsecondsToCentimeters(durationMeasured);
   driveMotor(distanceMeasuredInCm, false, true, VIBRATION_DURATION);
@@ -222,6 +291,8 @@ void loop() {
   turnOffMotor(PWM_PIN_FRONT);
   turnOffMotor(PWM_PIN_LEFT);
   turnOffMotor(PWM_PIN_RIGHT);
+
+  delay(SENSOR_INTERVAL);
 }
 /* --------------------------------------------------------------- */
 long microsecondsToCentimeters(long microseconds) {
@@ -230,20 +301,18 @@ long microsecondsToCentimeters(long microseconds) {
   // The actual formula is d = 334 + 0.6*T where T is the ambient temperature
   // The ping travels out and back, so to find the distance of the object we
   // take half of the distance travelled.
-  return microseconds / 29 / 2;
+  return microseconds / 58;
 }
 /* --------------------------------------------------------------- */
 //  4 levels
-//  Level 1(Highest) - measured <= MAX_DISTANCE/4
-//  Level 2 - measured <= MAX_DISTANCE/2
-//  Level 3 - measured <= MAX_DISTANCE * 3/4
-//  Level 4 - measured <= MAX_DISTANCE
+//  Level 1(Highest)         - measured <= MAX_DISTANCE / 4
+//  Level 2                  - measured <= MAX_DISTANCE / 2
+//  Level 3                  - measured <= MAX_DISTANCE * 3/4
+//  Level 4                  - measured <= MAX_DISTANCE
 //  Level 5(Not an obstacle) - measured > MAX_DISTANCE
 int determineObstacleLevel(long distanceInCm)
 {
-
-  if (distanceInCm == 0) return 5;
-  else if (distanceInCm <= OBSTACLE_LVL1_DISTANCE) return 1;
+  if      (distanceInCm <= OBSTACLE_LVL1_DISTANCE) return 1;
   else if (distanceInCm <= OBSTACLE_LVL2_DISTANCE) return 2;
   else if (distanceInCm <= OBSTACLE_LVL3_DISTANCE) return 3;
   else if (distanceInCm <= OBSTACLE_LVL4_DISTANCE) return 4;
@@ -283,7 +352,12 @@ void driveMotor(long distanceMeasured, bool enableLeft, bool enableRight, int vi
 
   obsLevel = determineObstacleLevel(distanceMeasured);
   pwmVal =  determinePWMLevel(obsLevel);
-
+  DEBUG_PRINT("Obstacle Level: ");
+  DEBUG_PRINT(obsLevel);
+  DEBUG_PRINTLN();
+  DEBUG_PRINT("PWM Value: ");
+  DEBUG_PRINT(pwmVal);
+  DEBUG_PRINTLN();
   if (obsLevel != 5)
   {
     if (enableLeft && enableRight)
@@ -349,29 +423,27 @@ void playFile(String fileName)
 void errorTone()
 {
   tone(SPEAKER_PIN, 1000); // Send 1KHz sound signal...
-  delay(250);
+  delay(150);
   noTone(SPEAKER_PIN);
   tone(SPEAKER_PIN, 1000); // Send 1KHz sound signal...
-  delay(250);
+  delay(150);
   noTone(SPEAKER_PIN);
   tone(SPEAKER_PIN, 1000); // Send 1KHz sound signal...
-  delay(250);
+  delay(150);
   noTone(SPEAKER_PIN);
-  delay(500);
 }
 /* --------------------------------------------------------------- */
 void startTone()
 {
   tone(SPEAKER_PIN, 500);
-  delay(250);
+  delay(150);
   noTone(SPEAKER_PIN);
   tone(SPEAKER_PIN, 750);
-  delay(250);
+  delay(150);
   noTone(SPEAKER_PIN);
   tone(SPEAKER_PIN, 1000);
-  delay(250);
+  delay(150);
   noTone(SPEAKER_PIN);
-  delay(1000);
 }
 /* --------------------------------------------------------------- */
 bool initializeSDCardReader()
@@ -379,10 +451,7 @@ bool initializeSDCardReader()
   if (!SD.begin(SD_CS_PIN))
   {
     // if error, notify with tone, but proceed with rest of program, audio playback will not function
-    for (int i = 0; i < 3; i++)
-    {
-      errorTone();
-    }
+    errorTone();
     return false;
   }
   else return true;
