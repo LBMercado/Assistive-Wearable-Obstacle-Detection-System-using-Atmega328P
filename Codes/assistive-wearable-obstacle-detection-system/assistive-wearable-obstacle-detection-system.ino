@@ -2,9 +2,9 @@
 #include <SD.h>
 #include <TMRpcm.h>
 #include <pcmRF.h>
-#include "DebugUtils.h"
 /* --------------------------------------------------------------- */
 //#define DEBUG
+#include "DebugUtils.h"
 /* --------------------------------------------------------------- */
 /* Device Operating Configurations */
 #define SENSOR_INTERVAL               500     //in milliseconds, amount of time to wait before next measurement
@@ -274,18 +274,27 @@ void loop() {
   DEBUG_PRINTLN("Front Ultrasonic triggered.");
   durationMeasured = pulseIn(US_ECHO_FRONT_PIN, HIGH);
   distanceMeasuredInCm = microsecondsToCentimeters(durationMeasured);
+  DEBUG_PRINT("Front Ultrasonic Distance = ");
+  DEBUG_PRINT(distanceMeasuredInCm);
+  DEBUG_PRINT(" cm\n");
   driveMotor(distanceMeasuredInCm, true, true, VIBRATION_DURATION);
 
   triggerUltrasonicSensor(US_TRIG_PIN);
   DEBUG_PRINTLN("Left Ultrasonic triggered.");
   durationMeasured = pulseIn(US_ECHO_LEFT_PIN, HIGH);
   distanceMeasuredInCm = microsecondsToCentimeters(durationMeasured);
+  DEBUG_PRINT("Left Ultrasonic Distance = ");
+  DEBUG_PRINT(distanceMeasuredInCm);
+  DEBUG_PRINT(" cm\n");
   driveMotor(distanceMeasuredInCm, true, false, VIBRATION_DURATION);
 
   triggerUltrasonicSensor(US_TRIG_PIN);
   DEBUG_PRINTLN("Right Ultrasonic triggered.");
   durationMeasured = pulseIn(US_ECHO_RIGHT_PIN, HIGH);
   distanceMeasuredInCm = microsecondsToCentimeters(durationMeasured);
+  DEBUG_PRINT("Right Ultrasonic Distance = ");
+  DEBUG_PRINT(distanceMeasuredInCm);
+  DEBUG_PRINT(" cm\n");
   driveMotor(distanceMeasuredInCm, false, true, VIBRATION_DURATION);
 
   turnOffMotor(PWM_PIN_FRONT);
@@ -312,7 +321,8 @@ long microsecondsToCentimeters(long microseconds) {
 //  Level 5(Not an obstacle) - measured > MAX_DISTANCE
 int determineObstacleLevel(long distanceInCm)
 {
-  if      (distanceInCm <= OBSTACLE_LVL1_DISTANCE) return 1;
+  if (distanceInCm == 0) return 5;
+  else if (distanceInCm <= OBSTACLE_LVL1_DISTANCE) return 1;
   else if (distanceInCm <= OBSTACLE_LVL2_DISTANCE) return 2;
   else if (distanceInCm <= OBSTACLE_LVL3_DISTANCE) return 3;
   else if (distanceInCm <= OBSTACLE_LVL4_DISTANCE) return 4;
