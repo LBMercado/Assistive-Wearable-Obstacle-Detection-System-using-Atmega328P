@@ -3,27 +3,18 @@
 #include <TMRpcm.h>
 #include <pcmRF.h>
 /* --------------------------------------------------------------- */
+//uncomment to enable debugging
 //#define DEBUG
 #include "DebugUtils.h"
 /* --------------------------------------------------------------- */
 /* Device Operating Configurations */
 #define SENSOR_INTERVAL               500     //in milliseconds, amount of time to wait before next measurement
-#define MAX_DISTANCE                  50      //in centimeters
+#define MAX_DISTANCE                  50      //maximum distance considered in centimeters
 #define STAIR_ELEV_DISTANCE           20      //in centimeters
 #define VIBRATION_DURATION            500     //in milliseconds
 #define SPEAKER_VOLUME                6       //set volume to 6 (loudest 7, no sound 0) might be distorted if too loud
 #define SPEAKER_SUPERSAMPLING_ENABLED 0       //enable 2x supersampling
 #define SPEAKER_AUDIO_LOOP_ENABLED    0       //prevent repeated playing of same file
-/* --------------------------------------------------------------- */
-#define OBSTACLE_LVL1_DISTANCE MAX_DISTANCE / 4
-#define OBSTACLE_LVL2_DISTANCE MAX_DISTANCE / 2
-#define OBSTACLE_LVL3_DISTANCE MAX_DISTANCE * 3 / 4
-#define OBSTACLE_LVL4_DISTANCE MAX_DISTANCE
-#define PWM_LVL1_VALUE 255
-#define PWM_LVL2_VALUE 255 * 3 / 4
-#define PWM_LVL3_VALUE 255 / 2
-#define PWM_LVL4_VALUE 255 / 4
-#define PWM_LVL5_VALUE 0
 /* --------------------------------------------------------------- */
 #if SPEAKER_VOLUME > 7 || SPEAKER_VOLUME < 0
 #undef SPEAKER_VOLUME
@@ -277,7 +268,7 @@ void loop() {
   DEBUG_PRINT("Front Ultrasonic Distance = ");
   DEBUG_PRINT(distanceMeasuredInCm);
   DEBUG_PRINT(" cm\n");
-  driveMotor(distanceMeasuredInCm, true, true, VIBRATION_DURATION);
+  driveMotor(distanceMeasuredInCm, PWM_PIN_FRONT, VIBRATION_DURATION);
 
   triggerUltrasonicSensor(US_TRIG_PIN);
   DEBUG_PRINTLN("Left Ultrasonic triggered.");
@@ -286,7 +277,7 @@ void loop() {
   DEBUG_PRINT("Left Ultrasonic Distance = ");
   DEBUG_PRINT(distanceMeasuredInCm);
   DEBUG_PRINT(" cm\n");
-  driveMotor(distanceMeasuredInCm, true, false, VIBRATION_DURATION);
+  driveMotor(distanceMeasuredInCm, PWM_PIN_LEFT, VIBRATION_DURATION);
 
   triggerUltrasonicSensor(US_TRIG_PIN);
   DEBUG_PRINTLN("Right Ultrasonic triggered.");
@@ -295,7 +286,7 @@ void loop() {
   DEBUG_PRINT("Right Ultrasonic Distance = ");
   DEBUG_PRINT(distanceMeasuredInCm);
   DEBUG_PRINT(" cm\n");
-  driveMotor(distanceMeasuredInCm, false, true, VIBRATION_DURATION);
+  driveMotor(distanceMeasuredInCm, PWM_PIN_RIGHT, VIBRATION_DURATION);
 
   turnOffMotor(PWM_PIN_FRONT);
   turnOffMotor(PWM_PIN_LEFT);
@@ -313,40 +304,6 @@ long microsecondsToCentimeters(long microseconds) {
   return microseconds / 58;
 }
 /* --------------------------------------------------------------- */
-//  4 levels
-//  Level 1(Highest)         - measured <= MAX_DISTANCE / 4
-//  Level 2                  - measured <= MAX_DISTANCE / 2
-//  Level 3                  - measured <= MAX_DISTANCE * 3/4
-//  Level 4                  - measured <= MAX_DISTANCE
-//  Level 5(Not an obstacle) - measured > MAX_DISTANCE
-int determineObstacleLevel(long distanceInCm)
-{
-  if (distanceInCm == 0) return 5;
-  else if (distanceInCm <= OBSTACLE_LVL1_DISTANCE) return 1;
-  else if (distanceInCm <= OBSTACLE_LVL2_DISTANCE) return 2;
-  else if (distanceInCm <= OBSTACLE_LVL3_DISTANCE) return 3;
-  else if (distanceInCm <= OBSTACLE_LVL4_DISTANCE) return 4;
-  else return 5;
-}
-/* --------------------------------------------------------------- */
-int determinePWMLevel(int obstacleLevel)
-{
-  switch (obstacleLevel)
-  {
-    case 4:
-      return PWM_LVL4_VALUE;
-    case 3:
-      return PWM_LVL3_VALUE;
-    case 2:
-      return PWM_LVL2_VALUE;
-    case 1:
-      return PWM_LVL1_VALUE;
-    case 5:
-    default:
-      return PWM_LVL5_VALUE;
-  }
-}
-/* --------------------------------------------------------------- */
 void triggerUltrasonicSensor(int TRIGGER_PIN)
 {
   digitalWrite(TRIGGER_PIN, LOW);
@@ -356,68 +313,37 @@ void triggerUltrasonicSensor(int TRIGGER_PIN)
   digitalWrite(TRIGGER_PIN, LOW);
 }
 /* --------------------------------------------------------------- */
-void driveMotor(long distanceMeasured, bool enableLeft, bool enableRight, int vibrationDuration)
+void driveMotor(long distanceMeasured, unsigned int motor_pin, unsigned int vibrationDuration)
 {
-  int obsLevel, pwmVal;
-
-  obsLevel = determineObstacleLevel(distanceMeasured);
-  pwmVal =  determinePWMLevel(obsLevel);
-  DEBUG_PRINT("Obstacle Level: ");
-  DEBUG_PRINT(obsLevel);
-  DEBUG_PRINTLN();
+  unsigned int pwmVal;
+  pwmVal =  map(distanceMeasured, 0, MAX_DISTANCE, 255, 0);
+  
   DEBUG_PRINT("PWM Value: ");
   DEBUG_PRINT(pwmVal);
+  DEBUG_PRINT(", driving motor for pin = ");
+  DEBUG_PRINT(motor_pin);
   DEBUG_PRINTLN();
-  if (obsLevel != 5)
-  {
-    if (enableLeft && enableRight)
-    {
-      analogWrite(PWM_PIN_FRONT, pwmVal);
-      delay(vibrationDuration);
-    }
-    else if (enableLeft && !enableRight)
-    {
-      digitalWrite(PWM_PIN_LEFT, HIGH);
-      delay(vibrationDuration);
-    }
-    else if (!enableLeft && enableRight)
-    {
-      analogWrite(PWM_PIN_RIGHT, pwmVal);
-      delay(vibrationDuration);
-    }
-  }
+  
+  analogWrite(motor_pin, pwmVal);
+  delay(vibrationDuration);
 }
 /* --------------------------------------------------------------- */
-void turnOffMotor(int motor_pin)
+void turnOffMotor(unsigned int motor_pin)
 {
   analogWrite(motor_pin, 0);
 }
 /* --------------------------------------------------------------- */
 void beginVibrationMotors()
 {
-  driveMotor(1, true, true, VIBRATION_DURATION);
-  driveMotor(1, true, false, VIBRATION_DURATION);
-  driveMotor(1, false, true, VIBRATION_DURATION);
-  delay(100);
-  turnOffMotor(PWM_PIN_FRONT);
-  turnOffMotor(PWM_PIN_LEFT);
-  turnOffMotor(PWM_PIN_RIGHT);
-  delay(100);
-  driveMotor(1, true, true, VIBRATION_DURATION);
-  driveMotor(1, true, false, VIBRATION_DURATION);
-  driveMotor(1, false, true, VIBRATION_DURATION);
-  delay(100);
-  turnOffMotor(PWM_PIN_FRONT);
-  turnOffMotor(PWM_PIN_LEFT);
-  turnOffMotor(PWM_PIN_RIGHT);
-  delay(100);
-  driveMotor(1, true, true, VIBRATION_DURATION);
-  driveMotor(1, true, false, VIBRATION_DURATION);
-  driveMotor(1, false, true, VIBRATION_DURATION);
-  delay(100);
-  turnOffMotor(PWM_PIN_FRONT);
-  turnOffMotor(PWM_PIN_LEFT);
-  turnOffMotor(PWM_PIN_RIGHT);
+  for (unsigned int i = 0; i < 3; i++){
+    driveMotor(0, PWM_PIN_RIGHT, VIBRATION_DURATION);
+    driveMotor(0, PWM_PIN_FRONT, VIBRATION_DURATION);
+    driveMotor(0, PWM_PIN_LEFT, VIBRATION_DURATION);
+    delay(100);
+    turnOffMotor(PWM_PIN_FRONT);
+    turnOffMotor(PWM_PIN_LEFT);
+    turnOffMotor(PWM_PIN_RIGHT);
+  }
 }
 /* --------------------------------------------------------------- */
 void playFile(String fileName)
@@ -432,28 +358,20 @@ void playFile(String fileName)
 /* --------------------------------------------------------------- */
 void errorTone()
 {
-  tone(SPEAKER_PIN, 1000); // Send 1KHz sound signal...
-  delay(150);
-  noTone(SPEAKER_PIN);
-  tone(SPEAKER_PIN, 1000); // Send 1KHz sound signal...
-  delay(150);
-  noTone(SPEAKER_PIN);
-  tone(SPEAKER_PIN, 1000); // Send 1KHz sound signal...
-  delay(150);
-  noTone(SPEAKER_PIN);
+  for (unsigned int i = 0; i < 3; i++){
+    tone(SPEAKER_PIN, 1000); // Send 1KHz sound signal...
+    delay(150);
+    noTone(SPEAKER_PIN);
+  }
 }
 /* --------------------------------------------------------------- */
 void startTone()
 {
-  tone(SPEAKER_PIN, 500);
-  delay(150);
-  noTone(SPEAKER_PIN);
-  tone(SPEAKER_PIN, 750);
-  delay(150);
-  noTone(SPEAKER_PIN);
-  tone(SPEAKER_PIN, 1000);
-  delay(150);
-  noTone(SPEAKER_PIN);
+  for (unsigned int i = 0; i < 3; i++){
+    tone(SPEAKER_PIN, 500);
+    delay(150);
+    noTone(SPEAKER_PIN);  
+  }
 }
 /* --------------------------------------------------------------- */
 bool initializeSDCardReader()
