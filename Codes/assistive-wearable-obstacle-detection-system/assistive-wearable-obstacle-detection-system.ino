@@ -9,6 +9,7 @@
 /* --------------------------------------------------------------- */
 /* Device Operating Configurations */
 #define SENSOR_INTERVAL               500     //in milliseconds, amount of time to wait before next measurement
+#define TRIGGER_WAIT_DURATION         60      //in milliseconds, wait before sending another trigger signal
 #define MAX_DISTANCE                  50      //maximum distance considered in centimeters
 #define STAIR_ELEV_DISTANCE           20      //in centimeters
 #define VIBRATION_DURATION            500     //in milliseconds
@@ -54,6 +55,7 @@ const unsigned short SPEAKER_PIN = 9;
 /* --------------------------------------------------------------- */
 unsigned short stairDetectState;
 bool sdCardFailed;
+unsigned long current_millis;
 #ifdef DEBUG
 unsigned long seqNo;
 #endif
@@ -269,6 +271,7 @@ void loop() {
   DEBUG_PRINT(distanceMeasuredInCm);
   DEBUG_PRINT(" cm\n");
   driveMotor(distanceMeasuredInCm, PWM_PIN_FRONT, VIBRATION_DURATION);
+  delay(TRIGGER_WAIT_DURATION); // account for possibility of overlapping triggers
 
   triggerUltrasonicSensor(US_TRIG_PIN);
   DEBUG_PRINTLN("Left Ultrasonic triggered.");
@@ -278,6 +281,7 @@ void loop() {
   DEBUG_PRINT(distanceMeasuredInCm);
   DEBUG_PRINT(" cm\n");
   driveMotor(distanceMeasuredInCm, PWM_PIN_LEFT, VIBRATION_DURATION);
+  delay(TRIGGER_WAIT_DURATION); // account for possibility of overlapping triggers
 
   triggerUltrasonicSensor(US_TRIG_PIN);
   DEBUG_PRINTLN("Right Ultrasonic triggered.");
@@ -316,6 +320,7 @@ void triggerUltrasonicSensor(int TRIGGER_PIN)
 void driveMotor(long distanceMeasured, unsigned int motor_pin, unsigned int vibrationDuration)
 {
   unsigned int pwmVal;
+  if (distanceMeasured > MAX_DISTANCE) return;
   pwmVal =  map(distanceMeasured, 0, MAX_DISTANCE, 255, 0);
   
   DEBUG_PRINT("PWM Value: ");
