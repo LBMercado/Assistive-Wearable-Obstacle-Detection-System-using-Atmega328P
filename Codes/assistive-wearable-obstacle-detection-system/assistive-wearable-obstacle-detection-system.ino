@@ -64,7 +64,7 @@ unsigned short readUltrasonicState, readMovementState;
 bool leftActivePrevious, rightActivePrevious;
 bool VS1053CodecFailed, sdCardFailed;
 unsigned long millisNow;
-unsigned short speaker_volume;
+unsigned short speakerVolume;
 #ifdef DEBUG
 unsigned long seqNo;
 #endif
@@ -116,9 +116,9 @@ void setup() {
   if (VS1053CodecFailed){
     DEBUG_PRINTLN("ERROR: Couldn't initialize VS1053. Check connections and configuration.");
   } else {
-    unsigned int raw_vol = analogRead(VOLUME_ADJ) / VOLUME_ADJ_SENSITIVITY;
-    speaker_volume = map(raw_vol, 0, 1023 / VOLUME_ADJ_SENSITIVITY, 0, 255); //lower is louder, 255 maximum value
-    playback.setVolume(speaker_volume, speaker_volume);
+    unsigned int rawVol = analogRead(VOLUME_ADJ) / VOLUME_ADJ_SENSITIVITY;
+    speakerVolume = map(rawVol, 0, 1023 / VOLUME_ADJ_SENSITIVITY, 0, 255); //lower is louder, 255 maximum value
+    playback.setVolume(speakerVolume, speakerVolume);
     playback.useInterrupt(VS1053_FILEPLAYER_TIMER0_INT);
   }
 
@@ -146,6 +146,7 @@ void setup() {
 void loop() {
   long durationMeasured, distanceMeasuredInCm;
   bool leftActive, rightActive;
+  unsigned int rawVol, newVol;
 
   #ifdef DEBUG
   seqNo++;
@@ -153,6 +154,14 @@ void loop() {
   DEBUG_PRINT(seqNo);
   DEBUG_PRINTLN();
   #endif
+
+  //adjust volume when value changes
+  rawVol = analogRead(VOLUME_ADJ) / VOLUME_ADJ_SENSITIVITY;
+  newVol = map(rawVol, 0, 1023 / VOLUME_ADJ_SENSITIVITY, 0, 255); //lower is louder, 255 maximum value
+  if (newVol != speakerVolume) {
+    speakerVolume = newVol;
+    playback.setVolume(speakerVolume, speakerVolume);
+  }
   
   // motion detection and stair detection
   // will refuse to work if audio is not initialized properly
