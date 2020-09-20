@@ -8,16 +8,17 @@
 /* --------------------------------------------------------------- */
 /* Device Operating Configurations */
 #ifdef DEBUG
-#define BAUD_RATE                       115200
+#define BAUD_RATE                       9600
 #endif
-#define ITERATION_INTERVAL                 300     //in milliseconds, amount of time to wait before next iteration
+#define ITERATION_INTERVAL              300     //in milliseconds, amount of time to wait before next iteration
 #define TRIGGER_WAIT_DURATION           60      //in milliseconds, wait before sending another trigger signal
 #define MAX_DISTANCE                    50      //maximum distance considered in centimeters
 #define PWM_VALUE_PERCENTAGE            70      //0 - 100, maximum output percentage PWM for vibration motors
 #define STAIR_ELEV_DISTANCE             20      //in centimeters
 #define VIBRATION_DURATION              100     //in milliseconds
 #define DEFAULT_VOLUME                  20      //default starting volume, will adjust based on analog reading on volume adjust potentiometer.
-#define VOLUME_ADJ_SENSITIVITY          50      //sensitivity of the volume adjust parameter, lower is more sensitive
+#define VOLUME_ADJ_SENSITIVITY          50      //sensitivity of the volume adjust parameter, lower is more sensitive (1 - 1023)
+#define VOLUME_ADJ_MAX                  1023 / VOLUME_ADJ_SENSITIVITY
 #if VOLUME_ADJ_SENSITIVITY <= 0
 #error "Volume Adjust Sensitivity cannot be less than or equal to zero."
 #endif
@@ -76,10 +77,7 @@ enum MOVEMENT_PATTERN {NO_MOVEMENT, RIGHTWARD, LEFTWARD};
 /* --------------------------------------------------------------- */
 Adafruit_VS1053_FilePlayer playback = 
   Adafruit_VS1053_FilePlayer(
-    MOSI_PIN, 
-    MISO_PIN, 
-    SCK_PIN, 
-    VS1053_XRST, 
+    VS1053_XRST,
     VS1053_SDCS,
     VS1053_XDCS,
     VS1053_DREQ, 
@@ -105,24 +103,24 @@ void setup() {
 
   readMovementState = readUltrasonicState = 0;
   
-  selectDeviceLine(1);
   #ifdef DEBUG
   Serial.begin(BAUD_RATE);
   seqNo = 0;
   #endif
-  DEBUG_PRINTLN("Obstacle Detection System Debugger");
+  DEBUG_PRINTLN("Obstacle Detection System Debugger Enabled");
 
+  selectDeviceLine(1);
   VS1053CodecFailed = !playback.begin();
   if (VS1053CodecFailed){
     DEBUG_PRINTLN("ERROR: Couldn't initialize VS1053. Check connections and configuration.");
   } else {
-    unsigned int rawVol = analogRead(VOLUME_ADJ) / VOLUME_ADJ_SENSITIVITY;
-    speakerVolume = map(rawVol, 0, 1023 / VOLUME_ADJ_SENSITIVITY, 0, 255); //lower is louder, 255 maximum value
+    speakerVolume = DEFAULT_VOLUME;
     playback.setVolume(speakerVolume, speakerVolume);
     playback.useInterrupt(VS1053_FILEPLAYER_TIMER0_INT);
+    DEBUG_PRINTLN("VS1053 configured.");
   }
 
-  sdCardFailed = SD.begin(SD_CS_PIN);
+  sdCardFailed = !SD.begin(SD_CS_PIN);
   if (sdCardFailed){
     DEBUG_PRINTLN("ERROR: Couldn't initialize connection with SD Card. Check connections and configuration.");
   } 
@@ -155,9 +153,10 @@ void loop() {
   DEBUG_PRINTLN();
   #endif
 
+  selectDeviceLine(1);
   //adjust volume when value changes
   rawVol = analogRead(VOLUME_ADJ) / VOLUME_ADJ_SENSITIVITY;
-  newVol = map(rawVol, 0, 1023 / VOLUME_ADJ_SENSITIVITY, 0, 255); //lower is louder, 255 maximum value
+  newVol = map(rawVol, 0, VOLUME_ADJ_MAX, 0, 20); //lower is louder, 20 is barely audible
   if (newVol != speakerVolume) {
     speakerVolume = newVol;
     playback.setVolume(speakerVolume, speakerVolume);
@@ -167,7 +166,6 @@ void loop() {
   // will refuse to work if audio is not initialized properly
   if (!sdCardFailed && !VS1053CodecFailed)
   {
-    selectDeviceLine(1);
     leftActive = digitalRead(PIR_RX_LEFT_PIN) == HIGH;
     rightActive = digitalRead(PIR_RX_RIGHT_PIN) == HIGH;
     
@@ -183,9 +181,9 @@ void loop() {
         enum MOVEMENT_PATTERN pattern;
         pattern = determineMovementPattern(leftActive, rightActive, leftActivePrevious, rightActivePrevious);
         if (pattern == RIGHTWARD)
-          playback.startPlayingFile("/filipino_obstacle_right.mp3");
+          playback.playFullFile("/right.mp3");
         else if (pattern == LEFTWARD)
-          playback.startPlayingFile("/filipino_obstacle_left.mp3");
+          playback.playFullFile("/left.mp3");
         //NO_MOVEMENT pattern or values unaccounted for will do nothing
         readMovementState--;
         break;
@@ -234,10 +232,10 @@ void loop() {
         //Republic Act No. 6541 - SECTION 3.01.08 - (h)
         //low elevation - downward stairs
         if (finalDistanceMeasured - prevStairDistance >= STAIR_ELEV_DISTANCE)
-          playback.startPlayingFile("/filipino_obstacle_lowElevation.mp3");
+          playback.playFullFile("/lelev.mp3");
         //high elevation - upward stairs
         else if (finalDistanceMeasured - prevStairDistance <= -STAIR_ELEV_DISTANCE)
-          playback.startPlayingFile("/filipino_obstacle_elevated.mp3");
+          playback.playFullFile("/helev.mp3");
         readUltrasonicState--;
         break;
       default:
@@ -354,7 +352,7 @@ void beginVibrationMotors()
 /* --------------------------------------------------------------- */
 void startTone()
 {
-  playback.playFullFile("/startup.mp3");
+  playback.playFullFile("/start.mp3");
 }
 /* --------------------------------------------------------------- */
 void selectDeviceLine(unsigned int lineNumber)
