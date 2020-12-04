@@ -9,18 +9,21 @@
 - <a href="https://texttospeech.io/">texttospeech.io for speech warnings</a>
 - <a href="https://easyeda.com/editor">EasyEda for schematic and PCB design</a>
 
+# Prototype
+![](misc/imgs/proto_composition.png)
+
 # Circuit Diagram
 ## Main Circuit (MCU)
-<a href="https://drive.google.com/uc?export=view&id=1AW-DSFKqr-4XIlAQcjyXXwMTJU6Qx59k"><img src="https://drive.google.com/uc?export=view&id=1AW-DSFKqr-4XIlAQcjyXXwMTJU6Qx59k" style="width: 500px; max-width: 100%; height: auto" title="Click for the larger version." /></a>
+![](misc/imgs/schem/Main_Circuit.png)
 ## Main Circuit (Selection Circuit)
-<a href="https://drive.google.com/uc?export=view&id=18po81zF_gZ5A_WsZF-KlaCNSLUldY_a3"><img src="https://drive.google.com/uc?export=view&id=18po81zF_gZ5A_WsZF-KlaCNSLUldY_a3" style="width: 500px; max-width: 100%; height: auto" title="Click for the larger version." /></a>
+![](misc/imgs/schem/Selection_Circuit.png)
 ## Main Circuit (Audio Playback)
-<a href="https://drive.google.com/uc?export=view&id=1NcetqllJ1a7odENrgmT25hwUAlpjkqoL"><img src="https://drive.google.com/uc?export=view&id=1NcetqllJ1a7odENrgmT25hwUAlpjkqoL" style="width: 500px; max-width: 100%; height: auto" title="Click for the larger version." /></a>
+![](misc/imgs/schem/Audio_Circuit.png)
 ## Front IO
-<a href="https://drive.google.com/uc?export=view&id=14eIWtjwrqVa5rpY1_CByqlSq_pYUSGZS"><img src="https://drive.google.com/uc?export=view&id=14eIWtjwrqVa5rpY1_CByqlSq_pYUSGZS" style="width: 500px; max-width: 100%; height: auto" title="Click for the larger version." /></a>
+![](misc/imgs/schem/Front_IO.png)
 ## Side IO
-<a href="https://drive.google.com/uc?export=view&id=1a-o7BikQuxyL5rbomhY_kig_ynYlasWH"><img src="https://drive.google.com/uc?export=view&id=1a-o7BikQuxyL5rbomhY_kig_ynYlasWH" style="width: 500px; max-width: 100%; height: auto" title="Click for the larger version." /></a>
+![](misc/imgs/schem/Side_IO.png)
 ## Power Supply
-<a href="https://drive.google.com/uc?export=view&id=1GINSSFsWeO4BblVUfhzlcmDLy9lSmI-i"><img src="https://drive.google.com/uc?export=view&id=1GINSSFsWeO4BblVUfhzlcmDLy9lSmI-i" style="width: 500px; max-width: 100%; height: auto" title="Click for the larger version." /></a>
+![](misc/imgs/schem/Power_Supply.png)
 
 <a href="https://drive.google.com/file/d/1RXgFMdHyPEx1-0Jna9kpo0OBlRs3VRfO/view?usp=sharing"><b>BOM and Associated Costs</b></a>
