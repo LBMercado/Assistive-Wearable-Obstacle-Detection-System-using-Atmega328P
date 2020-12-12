@@ -13,7 +13,7 @@
 #define ITERATION_INTERVAL              300     //in milliseconds, amount of time to wait before next iteration
 #define TRIGGER_WAIT_DURATION           60      //in milliseconds, wait before sending another trigger signal
 #define MAX_DISTANCE                    50      //maximum distance considered in centimeters
-#define PWM_VALUE_PERCENTAGE            70      //0 - 100, maximum output percentage PWM for vibration motors
+#define PWM_VALUE_PERCENTAGE            100      //0 - 100, maximum output percentage PWM for vibration motors, adjust lower to reduce power consumption
 #define STAIR_ELEV_DISTANCE             20      //in centimeters
 #define VIBRATION_DURATION              100     //in milliseconds
 #define DEFAULT_VOLUME                  20      //default starting volume, will adjust based on analog reading on volume adjust potentiometer.
@@ -66,9 +66,6 @@ bool leftActivePrevious, rightActivePrevious;
 bool VS1053CodecFailed, sdCardFailed;
 unsigned long millisNow;
 unsigned short speakerVolume;
-#ifdef DEBUG
-unsigned long seqNo;
-#endif
 /* --------------------------------------------------------------- */
 //output variable for stair detection algorithm
 long prevStairDistance;
@@ -105,39 +102,29 @@ void setup() {
   
   #ifdef DEBUG
   Serial.begin(BAUD_RATE);
-  seqNo = 0;
   #endif
-  DEBUG_PRINTLN("Obstacle Detection System Debugger Enabled");
 
   selectDeviceLine(1);
   VS1053CodecFailed = !playback.begin();
-  if (VS1053CodecFailed){
-    DEBUG_PRINTLN("ERROR: Couldn't initialize VS1053. Check connections and configuration.");
-  } else {
+  if (!VS1053CodecFailed){
     speakerVolume = DEFAULT_VOLUME;
     playback.setVolume(speakerVolume, speakerVolume);
     playback.useInterrupt(VS1053_FILEPLAYER_TIMER0_INT);
-    DEBUG_PRINTLN("VS1053 configured.");
   }
 
   sdCardFailed = !SD.begin(SD_CS_PIN);
-  if (sdCardFailed){
-    DEBUG_PRINTLN("ERROR: Couldn't initialize connection with SD Card. Check connections and configuration.");
-  } 
   #ifdef DEBUG
-  else {
+  if (!sdCardFailed) {
     // list files in directory
-    DEBUG_PRINTLN("Listing directory for SD Card.");
     printDirectory(SD.open("/"), 0);
   }
   #endif
 
-  if (VS1053CodecFailed || sdCardFailed){
-    DEBUG_PRINTLN("WARNING: VS1053 codec or SD Card didn't initialize properly. Speech warnings functionality will cease to function.");
-  } else {
+  if (!VS1053CodecFailed && !sdCardFailed){
     startTone();
   }
-
+  
+  DEBUG_PRINTLN("Starting internal debugger.");
   beginVibrationMotors();
 }
 /* --------------------------------------------------------------- */
@@ -145,13 +132,6 @@ void loop() {
   long durationMeasured, distanceMeasuredInCm;
   bool leftActive, rightActive;
   unsigned int rawVol, newVol;
-
-  #ifdef DEBUG
-  seqNo++;
-  DEBUG_PRINT("Sequence #");
-  DEBUG_PRINT(seqNo);
-  DEBUG_PRINTLN();
-  #endif
 
   selectDeviceLine(1);
   //adjust volume when value changes
@@ -189,7 +169,6 @@ void loop() {
         break;
       default:
         readMovementState = 0;
-        DEBUG_PRINTLN("WARNING: read movement pattern state is invalid, resetting to zero.");
     }
 
     //  consider elevated obstacle detection first before horizontal obstacle
@@ -205,13 +184,7 @@ void loop() {
 
         durationMeasured = pulseIn(US_ECHO_STAIRS_PIN, HIGH);
         prevStairDistance = microsecondsToCentimeters(durationMeasured);
-        DEBUG_PRINT("Initial Stair Distance = ");
-        DEBUG_PRINT(prevStairDistance);
-        DEBUG_PRINT(" cm\n");
         readUltrasonicState++;
-        DEBUG_PRINT("Stair State = ");
-        DEBUG_PRINT(readUltrasonicState);
-        DEBUG_PRINTLN();
         break;
       //record final distance and compare, then clear
       case 1:
@@ -225,9 +198,6 @@ void loop() {
 
         durationMeasured = pulseIn(US_ECHO_STAIRS_PIN, HIGH);
         finalDistanceMeasured = microsecondsToCentimeters(durationMeasured);
-        DEBUG_PRINT("Final Stair Distance = ");
-        DEBUG_PRINT(finalDistanceMeasured);
-        DEBUG_PRINT(" cm\n");
         //compare if there is a significant change in elevation
         //Republic Act No. 6541 - SECTION 3.01.08 - (h)
         //low elevation - downward stairs
@@ -240,11 +210,7 @@ void loop() {
         break;
       default:
         readUltrasonicState = 0;
-        DEBUG_PRINTLN("WARNING: ultrasonic detect state is invalid, resetting to zero.");
     }
-  } else
-  {
-    DEBUG_PRINTLN("ERROR: Unable to proceed with motion/stair detection, SD Card has failed at setup.");
   }
 
   //  select line 0 to choose the US sensor devices and common trigger
@@ -259,36 +225,24 @@ void loop() {
   // whose duration is the time (in microseconds) from the sending of the ping
   // to the reception of its echo off of an object.
   triggerUltrasonicSensor(US_TRIG_PIN);
-  DEBUG_PRINTLN("Front Ultrasonic triggered.");
   durationMeasured = pulseIn(US_ECHO_FRONT_PIN, HIGH);
   distanceMeasuredInCm = microsecondsToCentimeters(durationMeasured);
-  DEBUG_PRINT("Front Ultrasonic Distance = ");
-  DEBUG_PRINT(distanceMeasuredInCm);
-  DEBUG_PRINT(" cm\n");
   driveMotor(distanceMeasuredInCm, PWM_PIN_FRONT, VIBRATION_DURATION);
   millisNow = millis();
   // account for possibility of overlapping triggers
   while(millis() < millisNow + TRIGGER_WAIT_DURATION);
 
   triggerUltrasonicSensor(US_TRIG_PIN);
-  DEBUG_PRINTLN("Left Ultrasonic triggered.");
   durationMeasured = pulseIn(US_ECHO_LEFT_PIN, HIGH);
   distanceMeasuredInCm = microsecondsToCentimeters(durationMeasured);
-  DEBUG_PRINT("Left Ultrasonic Distance = ");
-  DEBUG_PRINT(distanceMeasuredInCm);
-  DEBUG_PRINT(" cm\n");
   driveMotor(distanceMeasuredInCm, PWM_PIN_LEFT, VIBRATION_DURATION);
   millisNow = millis();
   // account for possibility of overlapping triggers
   while(millis() < millisNow + TRIGGER_WAIT_DURATION);
 
   triggerUltrasonicSensor(US_TRIG_PIN);
-  DEBUG_PRINTLN("Right Ultrasonic triggered.");
   durationMeasured = pulseIn(US_ECHO_RIGHT_PIN, HIGH);
   distanceMeasuredInCm = microsecondsToCentimeters(durationMeasured);
-  DEBUG_PRINT("Right Ultrasonic Distance = ");
-  DEBUG_PRINT(distanceMeasuredInCm);
-  DEBUG_PRINT(" cm\n");
   driveMotor(distanceMeasuredInCm, PWM_PIN_RIGHT, VIBRATION_DURATION);
 
   turnOffMotor(PWM_PIN_FRONT);
@@ -321,12 +275,10 @@ void driveMotor(long distanceMeasured, unsigned int motor_pin, unsigned int vibr
   unsigned int pwmVal;
   if (distanceMeasured > MAX_DISTANCE || distanceMeasured <= 0) return;
   pwmVal =  map(distanceMeasured, 0, MAX_DISTANCE, 255 * PWM_VALUE_PERCENTAGE / 100, 0);
-  
-  DEBUG_PRINT("PWM Value: ");
-  DEBUG_PRINT(pwmVal);
-  DEBUG_PRINT(", driving motor for pin = ");
-  DEBUG_PRINT(motor_pin);
-  DEBUG_PRINTLN();
+  DEBUG_PRINT("Motor Pin: ");
+  DEBUG_PRINTLN(motor_pin);
+  DEBUG_PRINT("Motor PWM: ");
+  DEBUG_PRINTLN(pwmVal);
   
   analogWrite(motor_pin, pwmVal);
   delay(vibrationDuration);
