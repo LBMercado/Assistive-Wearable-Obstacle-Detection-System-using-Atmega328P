@@ -122,10 +122,13 @@ void setup() {
 
   if (!VS1053CodecFailed && !sdCardFailed){
     startTone();
+    delay(500);
+    beginVibrationMotors();
+  } else {
+    beginErrorVibrationMotors();
   }
   
   DEBUG_PRINTLN("Starting internal debugger.");
-  beginVibrationMotors();
 }
 /* --------------------------------------------------------------- */
 void loop() {
@@ -292,6 +295,19 @@ void beginVibrationMotors()
     driveMotor(1, PWM_PIN_FRONT, VIBRATION_DURATION);
     driveMotor(1, PWM_PIN_LEFT, VIBRATION_DURATION);
     delay(100);
+    turnOffMotor(PWM_PIN_FRONT);
+    turnOffMotor(PWM_PIN_LEFT);
+    turnOffMotor(PWM_PIN_RIGHT);
+  }
+}
+/* --------------------------------------------------------------- */
+void beginErrorVibrationMotors()
+{
+  for (unsigned int i = 0; i < 3; i++){
+    driveMotor(1, PWM_PIN_RIGHT, VIBRATION_DURATION);
+    driveMotor(1, PWM_PIN_FRONT, VIBRATION_DURATION);
+    driveMotor(1, PWM_PIN_LEFT, VIBRATION_DURATION);
+    delay(500);
     turnOffMotor(PWM_PIN_FRONT);
     turnOffMotor(PWM_PIN_LEFT);
     turnOffMotor(PWM_PIN_RIGHT);
