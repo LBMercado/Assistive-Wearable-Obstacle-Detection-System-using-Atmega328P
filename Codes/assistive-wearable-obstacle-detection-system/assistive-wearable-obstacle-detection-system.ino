@@ -200,12 +200,8 @@ void loop() {
         finalDistanceMeasured = microsecondsToCentimeters(durationMeasured);
         //compare if there is a significant change in elevation
         //Republic Act No. 6541 - SECTION 3.01.08 - (h)
-        //low elevation - downward stairs
-        if (finalDistanceMeasured - prevStairDistance >= STAIR_ELEV_DISTANCE)
-          playback.playFullFile("/lelev.mp3");
-        //high elevation - upward stairs
-        else if (finalDistanceMeasured - prevStairDistance <= -STAIR_ELEV_DISTANCE)
-          playback.playFullFile("/helev.mp3");
+        if (abs(finalDistanceMeasured - prevStairDistance) >= STAIR_ELEV_DISTANCE)
+          playback.playFullFile("/elev.mp3");
         readUltrasonicState--;
         break;
       default:
