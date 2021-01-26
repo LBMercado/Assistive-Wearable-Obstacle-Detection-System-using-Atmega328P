@@ -12,9 +12,10 @@
 #endif
 #define ITERATION_INTERVAL              300     //in milliseconds, amount of time to wait before next iteration
 #define TRIGGER_WAIT_DURATION           60      //in milliseconds, wait before sending another trigger signal
-#define MAX_DISTANCE                    50      //maximum distance considered in centimeters
+#define MAX_DISTANCE                    100     //maximum distance considered in centimeters
+#define MIN_DISTANCE                    10      //minimum distance considered in centimeters
 #define PWM_VALUE_PERCENTAGE            100      //0 - 100, maximum output percentage PWM for vibration motors, adjust lower to reduce power consumption
-#define STAIR_ELEV_DISTANCE             20      //in centimeters
+#define STAIR_ELEV_DISTANCE             10      //in centimeters
 #define VIBRATION_DURATION              100     //in milliseconds
 #define DEFAULT_VOLUME                  20      //default starting volume, will adjust based on analog reading on volume adjust potentiometer.
 #define VOLUME_ADJ_SENSITIVITY          50      //sensitivity of the volume adjust parameter, lower is more sensitive (1 - 1023)
@@ -22,6 +23,8 @@
 #if VOLUME_ADJ_SENSITIVITY <= 0
 #error "Volume Adjust Sensitivity cannot be less than or equal to zero."
 #endif
+#define MAX_CONSTANT_VIBRATION_TIME     5000    //in milliseconds
+#define CONSTANT_VIBRATION_DIST_TOL     5       //in centimeters
 /* --------------------------------------------------------------- */
 /* PIN Configuration */
 //    ultrasonic sensor pins
@@ -64,7 +67,8 @@ const unsigned short VOLUME_ADJ = A3;
 unsigned short readUltrasonicState, readMovementState;
 bool leftActivePrevious, rightActivePrevious;
 bool VS1053CodecFailed, sdCardFailed;
-unsigned long millisNow;
+unsigned long millisNow, frontMillis, leftMillis, rightMillis;
+unsigned long prevFrontDist, prevLeftDist, prevRightDist;
 unsigned short speakerVolume;
 /* --------------------------------------------------------------- */
 //output variable for stair detection algorithm
@@ -98,12 +102,17 @@ void setup() {
   pinMode(SELECTOR_PIN, OUTPUT);
   pinMode(VOLUME_ADJ, INPUT);
 
+  //initialize global variables
   readMovementState = readUltrasonicState = 0;
-  
+  frontMillis = leftMillis = rightMillis = millis();
+  prevFrontDist = prevLeftDist = prevRightDist = 0;
+
   #ifdef DEBUG
   Serial.begin(BAUD_RATE);
   #endif
 
+  //pull the chip select lines low
+  
   selectDeviceLine(1);
   VS1053CodecFailed = !playback.begin();
   if (!VS1053CodecFailed){
@@ -127,7 +136,7 @@ void setup() {
   } else {
     beginErrorVibrationMotors();
   }
-  
+
   DEBUG_PRINTLN("Starting internal debugger.");
 }
 /* --------------------------------------------------------------- */
@@ -226,7 +235,16 @@ void loop() {
   triggerUltrasonicSensor(US_TRIG_PIN);
   durationMeasured = pulseIn(US_ECHO_FRONT_PIN, HIGH);
   distanceMeasuredInCm = microsecondsToCentimeters(durationMeasured);
-  driveMotor(distanceMeasuredInCm, PWM_PIN_FRONT, VIBRATION_DURATION);
+  if (abs(distanceMeasuredInCm - prevFrontDist) < CONSTANT_VIBRATION_DIST_TOL) {
+    // still within vibration time duration
+    if (millis() <= frontMillis + MAX_CONSTANT_VIBRATION_TIME) {
+      driveMotor(distanceMeasuredInCm, PWM_PIN_FRONT, VIBRATION_DURATION);
+    } 
+  } else {
+    driveMotor(distanceMeasuredInCm, PWM_PIN_FRONT, VIBRATION_DURATION);
+    frontMillis = millis();
+  }
+  prevFrontDist = distanceMeasuredInCm;
   millisNow = millis();
   // account for possibility of overlapping triggers
   while(millis() < millisNow + TRIGGER_WAIT_DURATION);
@@ -234,7 +252,16 @@ void loop() {
   triggerUltrasonicSensor(US_TRIG_PIN);
   durationMeasured = pulseIn(US_ECHO_LEFT_PIN, HIGH);
   distanceMeasuredInCm = microsecondsToCentimeters(durationMeasured);
-  driveMotor(distanceMeasuredInCm, PWM_PIN_LEFT, VIBRATION_DURATION);
+  if (abs(distanceMeasuredInCm - prevLeftDist) < CONSTANT_VIBRATION_DIST_TOL) {
+    // still within vibration time duration
+    if (millis() <= leftMillis + MAX_CONSTANT_VIBRATION_TIME) {
+      driveMotor(distanceMeasuredInCm, PWM_PIN_LEFT, VIBRATION_DURATION);
+    } 
+  } else {
+    driveMotor(distanceMeasuredInCm, PWM_PIN_LEFT, VIBRATION_DURATION);
+    leftMillis = millis();
+  }
+  prevLeftDist = distanceMeasuredInCm;
   millisNow = millis();
   // account for possibility of overlapping triggers
   while(millis() < millisNow + TRIGGER_WAIT_DURATION);
@@ -242,7 +269,16 @@ void loop() {
   triggerUltrasonicSensor(US_TRIG_PIN);
   durationMeasured = pulseIn(US_ECHO_RIGHT_PIN, HIGH);
   distanceMeasuredInCm = microsecondsToCentimeters(durationMeasured);
-  driveMotor(distanceMeasuredInCm, PWM_PIN_RIGHT, VIBRATION_DURATION);
+  if (abs(distanceMeasuredInCm - prevRightDist) < CONSTANT_VIBRATION_DIST_TOL) {
+    // still within vibration time duration
+    if (millis() <= rightMillis + MAX_CONSTANT_VIBRATION_TIME) {
+      driveMotor(distanceMeasuredInCm, PWM_PIN_RIGHT, VIBRATION_DURATION);
+    } 
+  } else {
+    driveMotor(distanceMeasuredInCm, PWM_PIN_RIGHT, VIBRATION_DURATION);
+    rightMillis = millis();
+  }
+  prevRightDist = distanceMeasuredInCm;
 
   turnOffMotor(PWM_PIN_FRONT);
   turnOffMotor(PWM_PIN_LEFT);
@@ -273,7 +309,7 @@ void driveMotor(long distanceMeasured, unsigned int motor_pin, unsigned int vibr
 {
   unsigned int pwmVal;
   if (distanceMeasured > MAX_DISTANCE || distanceMeasured <= 0) return;
-  pwmVal =  map(distanceMeasured, 0, MAX_DISTANCE, 255 * PWM_VALUE_PERCENTAGE / 100, 0);
+  pwmVal =  map(distanceMeasured, MIN_DISTANCE, MAX_DISTANCE, 255 * PWM_VALUE_PERCENTAGE / 100, 0);
   DEBUG_PRINT("Motor Pin: ");
   DEBUG_PRINTLN(motor_pin);
   DEBUG_PRINT("Motor PWM: ");
@@ -304,9 +340,9 @@ void beginVibrationMotors()
 void beginErrorVibrationMotors()
 {
   for (unsigned int i = 0; i < 3; i++){
-    driveMotor(1, PWM_PIN_RIGHT, VIBRATION_DURATION);
-    driveMotor(1, PWM_PIN_FRONT, VIBRATION_DURATION);
-    driveMotor(1, PWM_PIN_LEFT, VIBRATION_DURATION);
+    driveMotor(10, PWM_PIN_RIGHT, VIBRATION_DURATION);
+    driveMotor(10, PWM_PIN_FRONT, VIBRATION_DURATION);
+    driveMotor(10, PWM_PIN_LEFT, VIBRATION_DURATION);
     delay(500);
     turnOffMotor(PWM_PIN_FRONT);
     turnOffMotor(PWM_PIN_LEFT);
@@ -329,6 +365,8 @@ void selectDeviceLine(unsigned int lineNumber)
       break;
     case 1:
       // select line 1 to choose the microsd card reader, PIR sensors, and US sensor for stair detection
+      // pull the select line high first for microsd card reader to prevent accidental SPI comms
+      digitalWrite(SD_CS_PIN, HIGH);
       digitalWrite(SELECTOR_PIN, HIGH);
       break;
     default:
