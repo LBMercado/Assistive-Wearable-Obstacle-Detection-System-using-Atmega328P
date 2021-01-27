@@ -309,6 +309,7 @@ void driveMotor(long distanceMeasured, unsigned int motor_pin, unsigned int vibr
 {
   unsigned int pwmVal;
   if (distanceMeasured > MAX_DISTANCE || distanceMeasured <= 0) return;
+  distanceMeasured = constrain(distanceMeasured, MIN_DISTANCE, MAX_DISTANCE);
   pwmVal =  map(distanceMeasured, MIN_DISTANCE, MAX_DISTANCE, 255 * PWM_VALUE_PERCENTAGE / 100, 0);
   DEBUG_PRINT("Motor Pin: ");
   DEBUG_PRINTLN(motor_pin);
@@ -327,9 +328,9 @@ void turnOffMotor(unsigned int motor_pin)
 void beginVibrationMotors()
 {
   for (unsigned int i = 0; i < 3; i++){
-    driveMotor(1, PWM_PIN_RIGHT, VIBRATION_DURATION);
-    driveMotor(1, PWM_PIN_FRONT, VIBRATION_DURATION);
-    driveMotor(1, PWM_PIN_LEFT, VIBRATION_DURATION);
+    driveMotor(10, PWM_PIN_RIGHT, VIBRATION_DURATION);
+    driveMotor(10, PWM_PIN_FRONT, VIBRATION_DURATION);
+    driveMotor(10, PWM_PIN_LEFT, VIBRATION_DURATION);
     delay(100);
     turnOffMotor(PWM_PIN_FRONT);
     turnOffMotor(PWM_PIN_LEFT);
