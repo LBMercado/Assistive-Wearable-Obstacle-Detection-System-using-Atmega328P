@@ -10,12 +10,12 @@
 #ifdef DEBUG
 #define BAUD_RATE                       9600
 #endif
-#define ITERATION_INTERVAL              300     //in milliseconds, amount of time to wait before next iteration
+#define ITERATION_INTERVAL              0       //in milliseconds, amount of time to wait before next iteration
 #define TRIGGER_WAIT_DURATION           60      //in milliseconds, wait before sending another trigger signal
-#define MAX_DISTANCE                    100     //maximum distance considered in centimeters
+#define MAX_DISTANCE                    200     //maximum distance considered in centimeters
 #define MIN_DISTANCE                    10      //minimum distance considered in centimeters
-#define PWM_VALUE_PERCENTAGE            100      //0 - 100, maximum output percentage PWM for vibration motors, adjust lower to reduce power consumption
-#define STAIR_ELEV_DISTANCE             10      //in centimeters
+#define PWM_VALUE_PERCENTAGE            100     //0 - 100, maximum output percentage PWM for vibration motors, adjust lower to reduce power consumption
+#define STAIR_ELEV_DISTANCE             15      //in centimeters
 #define VIBRATION_DURATION              100     //in milliseconds
 #define DEFAULT_VOLUME                  20      //default starting volume, will adjust based on analog reading on volume adjust potentiometer.
 #define VOLUME_ADJ_SENSITIVITY          50      //sensitivity of the volume adjust parameter, lower is more sensitive (1 - 1023)
@@ -23,8 +23,8 @@
 #if VOLUME_ADJ_SENSITIVITY <= 0
 #error "Volume Adjust Sensitivity cannot be less than or equal to zero."
 #endif
-#define MAX_CONSTANT_VIBRATION_TIME     5000    //in milliseconds
-#define CONSTANT_VIBRATION_DIST_TOL     5       //in centimeters
+#define MAX_CONSTANT_VIBRATION_TIME     3000    //in milliseconds
+#define CONSTANT_VIBRATION_DIST_TOL     15      //in centimeters
 /* --------------------------------------------------------------- */
 /* PIN Configuration */
 //    ultrasonic sensor pins
@@ -128,7 +128,7 @@ void setup() {
     printDirectory(SD.open("/"), 0);
   }
   #endif
-
+  
   if (!VS1053CodecFailed && !sdCardFailed){
     startTone();
     delay(500);
@@ -136,7 +136,7 @@ void setup() {
   } else {
     beginErrorVibrationMotors();
   }
-
+  
   DEBUG_PRINTLN("Starting internal debugger.");
 }
 /* --------------------------------------------------------------- */
@@ -160,7 +160,6 @@ void loop() {
   {
     leftActive = digitalRead(PIR_RX_LEFT_PIN) == HIGH;
     rightActive = digitalRead(PIR_RX_RIGHT_PIN) == HIGH;
-    
     switch(readMovementState){
       case 0:
         //record initial position
@@ -178,6 +177,14 @@ void loop() {
           playback.playFullFile("/left.mp3");
         //NO_MOVEMENT pattern or values unaccounted for will do nothing
         readMovementState--;
+        DEBUG_PRINT("Prev. PIR Left: ");
+        DEBUG_PRINTLN(leftActivePrevious);
+        DEBUG_PRINT("Prev. PIR Right: ");
+        DEBUG_PRINTLN(rightActivePrevious);
+        DEBUG_PRINT("Curr. PIR Left: ");
+        DEBUG_PRINTLN(leftActive);
+        DEBUG_PRINT("Curr. PIR Right: ");
+        DEBUG_PRINTLN(rightActive);
         break;
       default:
         readMovementState = 0;
@@ -215,6 +222,8 @@ void loop() {
         if (abs(finalDistanceMeasured - prevStairDistance) >= STAIR_ELEV_DISTANCE)
           playback.playFullFile("/elev.mp3");
         readUltrasonicState--;
+        DEBUG_PRINT("Elevation: ");
+        DEBUG_PRINTLN(abs(finalDistanceMeasured - prevStairDistance));
         break;
       default:
         readUltrasonicState = 0;
@@ -256,7 +265,7 @@ void loop() {
     // still within vibration time duration
     if (millis() <= leftMillis + MAX_CONSTANT_VIBRATION_TIME) {
       driveMotor(distanceMeasuredInCm, PWM_PIN_LEFT, VIBRATION_DURATION);
-    } 
+    }
   } else {
     driveMotor(distanceMeasuredInCm, PWM_PIN_LEFT, VIBRATION_DURATION);
     leftMillis = millis();
