@@ -203,6 +203,7 @@ void loop() {
 
         durationMeasured = pulseIn(US_ECHO_STAIRS_PIN, HIGH);
         prevStairDistance = microsecondsToCentimeters(durationMeasured);
+        if (prevStairDistance > 400) prevStairDistance = 0;
         readUltrasonicState++;
         break;
       //record final distance and compare, then clear
@@ -217,11 +218,16 @@ void loop() {
 
         durationMeasured = pulseIn(US_ECHO_STAIRS_PIN, HIGH);
         finalDistanceMeasured = microsecondsToCentimeters(durationMeasured);
+        if (finalDistanceMeasured > 400) finalDistanceMeasured = 0;
         //compare if there is a significant change in elevation
         //Republic Act No. 6541 - SECTION 3.01.08 - (h)
         if (abs(finalDistanceMeasured - prevStairDistance) >= STAIR_ELEV_DISTANCE)
           playback.playFullFile("/elev.mp3");
         readUltrasonicState--;
+        DEBUG_PRINT("Prev Dist: ");
+        DEBUG_PRINTLN(prevStairDistance);
+        DEBUG_PRINT("Final Dist: ");
+        DEBUG_PRINTLN(finalDistanceMeasured);
         DEBUG_PRINT("Elevation: ");
         DEBUG_PRINTLN(abs(finalDistanceMeasured - prevStairDistance));
         break;
@@ -288,6 +294,9 @@ void loop() {
     rightMillis = millis();
   }
   prevRightDist = distanceMeasuredInCm;
+  millisNow = millis();
+  // account for possibility of overlapping triggers
+  while(millis() < millisNow + TRIGGER_WAIT_DURATION);
 
   turnOffMotor(PWM_PIN_FRONT);
   turnOffMotor(PWM_PIN_LEFT);
